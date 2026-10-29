@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    participant C as Customer
+    participant G as API Gateway
+    participant T as Transfer Service
+    participant D as Ledger Database
+    C->>G: POST /transfers + auth + Idempotency-Key
+    G->>G: Validate token/session, quotas
+    G->>T: Authenticated principal and request
+    T->>T: Check source ownership, recipient, amount, limits, step-up
+    T->>D: BEGIN; acquire appropriate locks / serialize balance
+    T->>D: Check unique idempotency key and request fingerprint
+    alt Key already committed with same request
+        D-->>T: Existing transfer result
+        T-->>G: Original outcome (no new ledger write)
+    else Key reused with different request
+        D-->>T: Fingerprint mismatch
+        T-->>G: Conflict (no ledger write)
+    else New authorized transfer
+        T->>D: Check available funds and enforce limits
+        T->>D: Post balanced debit and credit + durable key/result
+        T->>D: INSERT audit outbox event in same DB transaction
+        T->>D: COMMIT
+        D-->>T: Transfer committed
+        T-->>G: Transaction ID + status
+    end
+    G-->>C: Response over TLS
+    Note over D: A worker later delivers committed outbox events to append-only audit storage

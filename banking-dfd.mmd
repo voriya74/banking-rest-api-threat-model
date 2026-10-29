@@ -1,0 +1,25 @@
+flowchart LR
+    Customer[Customer web/mobile client]
+    Attacker[External attacker]
+    subgraph Public[Trust boundary A: public ingress]
+      Gateway[HTTPS API gateway / WAF]
+    end
+    subgraph Internal[Trust boundary B: private service network]
+      Auth[Identity provider / session validator]
+      Account[Accounts service]
+      Transfer[Transfer service]
+    end
+    subgraph Persistence[Trust boundary C: trusted data and evidence]
+      Ledger[(Accounts / double-entry ledger)]
+      Outbox[(Audit event outbox)]
+      Audit[Append-only audit sink]
+    end
+    Customer -->|1 Login/read/transfer via TLS| Gateway
+    Attacker -.->|2 Untrusted API input| Gateway
+    Gateway -->|3 Validate identity| Auth
+    Gateway -->|4 Authenticated query| Account
+    Gateway -->|5 Authenticated command| Transfer
+    Account -->|6 Ownership-scoped read| Ledger
+    Transfer -->|7 Locked atomic posting| Ledger
+    Transfer -->|8 Audit in same transaction| Outbox
+    Outbox -->|9 Durable asynchronous delivery| Audit
